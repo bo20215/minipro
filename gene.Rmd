@@ -1,0 +1,191 @@
+---
+title: "opengene"
+author: "Guan Wang"
+date: "2021/4/12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(limma)
+library(Seurat)
+library(dplyr)
+library(magrittr)
+```
+
+```{r load_data, echo=FALSE}
+pbmc2 <- CreateSeuratObject(Read10X('gene_data/'),project = "seurat",min.cells = 3, min.features = 50, names.delim = "_")
+head(pbmc2@meta.data)
+```
+filter data
+```{r fliter, echo=FALSE}
+pbmc2[["mitoRatio"]] <- PercentageFeatureSet(object = pbmc2, pattern = "^MT-")
+pbmc2$mitoRatio <- pbmc2$mitoRatio
+VlnPlot(object = pbmc2, features = c("nFeature_RNA", "nCount_RNA", "mitoRatio"), ncol = 3)
+pbmc2 <- subset(x = pbmc2, subset = nCount_RNA > 500 & nFeature_RNA > 250 & mitoRatio < 0.2)  
+save(pbmc2, file="filtered2.RData")
+```
+
+normalize the data
+```{r normalize, echo=FALSE}
+pbmc2 <- NormalizeData(object = pbmc2, normalization.method = "LogNormalize", scale.factor = 10000)
+pbmc2 <- FindVariableFeatures(object = pbmc2, selection.method = "vst", nfeatures = 3000)
+top10 <- head(x = VariableFeatures(object = pbmc2), 10)
+plot1 <- VariableFeaturePlot(object = pbmc2)
+LabelPoints(plot = plot1, points = top10, repel = TRUE)
+```
+
+do PCA
+```{r PCA, echo=FALSE}
+pbmc2=ScaleData(pbmc2)                     
+pbmc2=RunPCA(object= pbmc2,pc.genes=VariableFeatures(object = pbmc2))     
+VizDimLoadings(object = pbmc2, dims = 1:4, reduction = "pca",nfeatures = 20)
+```
+analyze PCA
+```{r PCs, echo=FALSE}
+
+DimPlot(object = pbmc2, reduction = "pca")
+
+DimHeatmap(object = pbmc2, dims = 1:4, cells = 500, balanced = TRUE,nfeatures = 90,ncol=2)
+
+ElbowPlot(pbmc2,ndims=50)
+
+pbmc2 <- JackStraw(object = pbmc2, num.replicate = 100)
+pbmc2 <- ScoreJackStraw(object = pbmc2, dims = 1:20)
+JackStrawPlot(object = pbmc2, dims2 = 1:20)
+```
+
+```{r KNN, echo=FALSE}
+pcSelect=20
+pbmc2 <- FindNeighbors(object = pbmc2, dims = 1:pcSelect)                
+pbmc2 <- FindClusters(object = pbmc2, resolution = 0.5)                 
+```
+
+```{r TSNE, echo=FALSE}
+pbmc2 <- RunTSNE(object = pbmc2, dims = 1:pcSelect)                      #TSNE聚类
+TSNEPlot(object = pbmc2, pt.size = 1.5, label = TRUE)    #TSNE可视化#do.label = TRUE
+```
+
+```{r Umap, echo=FALSE}
+pbmc2 <- RunUMAP(pbmc2, dims = 1:pcSelect)
+DimPlot(pbmc2, reduction = "umap",pt.size = 1.5, label = TRUE)
+```
+
+find marker
+```{r marker, echo=FALSE}
+logFCfilter=0.5
+adjPvalFilter=0.05
+pbmc2.markers <- FindAllMarkers(object = pbmc2,
+                               only.pos = TRUE,
+                               min.pct = 0.5,
+                               logfc.threshold = logFCfilter)
+sig.markers=pbmc2.markers[(abs(as.numeric(as.vector(pbmc2.markers$avg_logFC)))>logFCfilter & as.numeric(as.vector(pbmc2.markers$p_val_adj))<adjPvalFilter),]
+write.table(sig.markers,file="06.markers2.xls",sep="\t",row.names=F,quote=F)
+```
+analyze marker
+```{r ana_marker, echo=FALSE}
+top102 <- pbmc2.markers %>% group_by(cluster) %>% top_n(n = 10,wt = avg_log2FC)
+
+DoHeatmap(object = pbmc2, features = top102$gene) + NoLegend()
+
+VlnPlot(object = pbmc2, features = top102$gene[1:2])
+
+FeaturePlot(object = pbmc2, features = top102$gene[1:2],cols = c("green", "red"))
+
+cluster10Marker=top102$gene[1:10]
+DotPlot(object = pbmc2, features = cluster10Marker)
+```
+
+mark
+```{r mark, echo=FALSE}
+pbmc2 <- RenameIdents(object = pbmc2, 
+                               "0" = "Monocyte",
+                               "1" = "Natural killer T (NKT) cell",
+                               "2" = "Natural killer T (NKT) cell",
+                               "3" = "Monocyte",
+                               "4" = "Natural killer T (NKT) cell",
+                               "5" = "Natural killer T (NKT) cell",
+                               "6" = "B cells",
+                               "7" = "FOLR3 + Monocyte",
+                               "8" = "Astrocyte",
+                               "9" = "Liver bud hepatic cell",
+                               "10" = "CD1C-CD141- dendritic cell",
+                               "11" = "MT-ATP8 + Natural killer T (NKT) cell",
+                               "12" = "Monocyte + Natural killer T (NKT) cell",
+                               "13" = "FCER1A + Paneth cell",
+                               "14" = "Monocyte",
+                               "15" = "Red blood cell (erythrocyte)",
+                               "16" = "B cell",
+                               "17" = "Megakaryocyte progenitor cell", 
+                               "18" = "Endothelial cell + Natural killer T (NKT) cell", 
+                               "19" = "TRDV2 + Natural killer T (NKT) cell", 
+                               "20" = "T cell",
+                               "21" = "B cell",
+                               "22" = "B cell",
+                               "23" = "Natural killer T (NKT) cell")
+```
+
+```{r umap, echo=FALSE}
+DimPlot(pbmc2, reduction = "umap")
+```
+
+```{r tsne, echo=FALSE}
+TSNEPlot(object = pbmc2, pt.size = 1.5)
+```
+
+```{r celltype, echo=FALSE}
+get_cell_type <- function(cell){
+  cellcluster = pbmc2@meta.data[cell,"seurat_clusters"]
+  if(cellcluster == 0)
+    cellcluster = "Monocyte"
+  if(cellcluster == 1)
+    cellcluster = "Natural killer T (NKT) cell"
+  if(cellcluster == 2)
+    cellcluster = "Natural killer T (NKT) cell"
+  if(cellcluster == 3)
+    cellcluster = "Monocyte"
+  if(cellcluster == 4)
+    cellcluster = "Natural killer T (NKT) cell"
+  if(cellcluster == 5)
+    cellcluster = "Natural killer T (NKT) cell"
+  if(cellcluster == 6)
+    cellcluster = "B cells"
+  if(cellcluster == 7)
+    cellcluster = "FOLR3 + Monocyte"
+  if(cellcluster == 8)
+    cellcluster = "Astrocyte"
+  if(cellcluster == 9)
+    cellcluster = "Liver bud hepatic cell"
+  if(cellcluster == 10)
+    cellcluster = "CD1C-CD141- dendritic cell"
+  if(cellcluster == 11)
+    cellcluster = "MT-ATP8 + Natural killer T (NKT) cell"
+  if(cellcluster == 12)
+    cellcluster = "Monocyte + Natural killer T (NKT) cell"
+  if(cellcluster == 13)
+    cellcluster = "FCER1A + Paneth cell"
+  if(cellcluster == 14)
+    cellcluster = "Monocyte"
+  if(cellcluster == 15)
+    cellcluster = "Red blood cell (erythrocyte)"
+  if(cellcluster == 16)
+    cellcluster = "B cells"
+  if(cellcluster == 17)
+    cellcluster = "Megakaryocyte progenitor cell"
+  if(cellcluster == 18)
+    cellcluster = "Endothelial cell + Natural killer T (NKT) cell"
+  if(cellcluster == 19)
+    cellcluster = "TRDV2 + Natural killer T (NKT) cell"
+  if(cellcluster == 20)
+    cellcluster = "T cell"
+  if(cellcluster == 21)
+    cellcluster = "B cells"
+  if(cellcluster == 22)
+    cellcluster = "B cells"
+  if(cellcluster == 23)
+    cellcluster = "Natural killer T (NKT) cell"
+  return(cellcluster)
+} 
+get_cell_type("SAMC150711-AAACAAGACGCTCTTC")
+                        
+```

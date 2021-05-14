@@ -1,0 +1,134 @@
+---
+title: "hg19"
+author: "Guan Wang"
+date: "2021/4/13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(limma)
+library(Seurat)
+library(dplyr)
+library(magrittr)
+```
+
+```{r load_data}
+pbmc <- CreateSeuratObject(Read10X('hg19/'),project = "seurat",min.cells = 3, min.features = 50, names.delim = "_")
+head(pbmc@meta.data)
+```
+
+filter data
+```{r fliter, echo=FALSE}
+pbmc$mitoRatio <- PercentageFeatureSet(object = pbmc, pattern = "^MT-")
+pbmc$mitoRatio <- pbmc$mitoRatio/100
+VlnPlot(object = pbmc, features = c("nFeature_RNA", "nCount_RNA", "mitoRatio"), ncol = 3)
+pbmc <- subset(x = pbmc, subset = nCount_RNA > 500 & nFeature_RNA > 250 & mitoRatio < 0.2) 
+save(pbmc, file="filtered.RData")
+```
+normalize the data
+```{r normalize, echo=FALSE}
+pbmc <- NormalizeData(object = pbmc, normalization.method = "LogNormalize", scale.factor = 10000)
+pbmc <- FindVariableFeatures(object = pbmc, selection.method = "vst", nfeatures = 2000)
+top10 <- head(x = VariableFeatures(object = pbmc), 10)
+plot1<-VariableFeaturePlot(object = pbmc)
+LabelPoints(plot = plot1, points = top10, repel = TRUE)
+```
+ do PCA
+```{r PCA, echo=FALSE}
+pbmc=ScaleData(pbmc)                    
+pbmc=RunPCA(object= pbmc,npcs = 20,pc.genes=VariableFeatures(object = pbmc))    
+VizDimLoadings(object = pbmc, dims = 1:2, reduction = "pca",nfeatures = 20)
+```
+analyze PCA
+```{r PCs, echo=FALSE}
+DimPlot(object = pbmc, reduction = "pca") #scatter
+
+DimHeatmap(object = pbmc, dims = 1:4, cells = 500, balanced = TRUE,nfeatures = 30,ncol=2)
+
+ElbowPlot(pbmc)
+
+pbmc <- JackStraw(object = pbmc, num.replicate = 100)
+pbmc <- ScoreJackStraw(object = pbmc, dims = 1:20)
+JackStrawPlot(object = pbmc, dims = 1:20)
+```
+```{r KNN, echo=FALSE}
+pcSelect=15
+pbmc <- FindNeighbors(object = pbmc, dims = 1:pcSelect)                
+pbmc <- FindClusters(object = pbmc, resolution = 0.5)                  
+```
+```{r TSNE, echo=FALSE}
+pbmc <- RunTSNE(object = pbmc, dims = 1:pcSelect)                      
+TSNEPlot(object = pbmc, pt.size = 1.5, label = TRUE)    
+```
+```{r Umap, echo=FALSE}
+pbmc <- RunUMAP(pbmc, dims = 1:pcSelect)
+DimPlot(pbmc, reduction = "umap",pt.size = 1.5, label = TRUE)
+```
+find marker
+```{r marker, echo=FALSE}
+logFCfilter=0.5
+adjPvalFilter=0.05
+pbmc.markers <- FindAllMarkers(object = pbmc,
+                               only.pos = FALSE,
+                               min.pct = 0.25,
+                               logfc.threshold = logFCfilter)
+sig.markers=pbmc.markers[(abs(as.numeric(as.vector(pbmc.markers$avg_logFC)))>logFCfilter & as.numeric(as.vector(pbmc.markers$p_val_adj))<adjPvalFilter),]
+write.table(sig.markers,file="markers.xls",sep="\t",row.names=F,quote=F)
+
+top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10,wt = avg_log2FC)#wt = avg_logFC
+#analyze marker
+DoHeatmap(object = pbmc, features = top2$gene) + NoLegend()
+
+VlnPlot(object = pbmc, features = top2$gene[1:2])
+
+
+FeaturePlot(object = pbmc, features = top2$gene[1:2],cols = c("green", "red"))
+
+cluster10Marker=top2$gene[1:10]
+DotPlot(object = pbmc, features = cluster10Marker)
+```
+
+```{r mark, echo=FALSE}
+pbmc <- RenameIdents(object = pbmc, 
+                               "0" = "Natural killer T (NKT) cell",
+                               "1" = "Natural killer T (NKT) cell",
+                               "2" = "Monocyte",
+                               "3" = "B cell",
+                               "4" = "Natural killer T (NKT) cell",
+                               "5" = "CD4+ cytotoxic T cell",
+                               "6" = "CD1C-CD141- dendritic cell",
+                               "7" = "Secretory cell",
+                               "8" = "Natural killer T (NKT) cell")
+TSNEPlot(object = pbmc, pt.size = 2, label = TRUE)
+```
+```{r UMAP, echo=FALSE}
+pbmc <- RunUMAP(pbmc, dims = 1:pcSelect)
+DimPlot(pbmc, reduction = "umap",pt.size = 1.5, label = TRUE)
+```
+```{r celltype, echo=FALSE}
+get_cell_type <- function(cell){
+  cellcluster = pbmc@meta.data[cell,"seurat_clusters"]
+  if(cellcluster == 0)
+    cellcluster = "Natural killer T (NKT) cell"
+  if(cellcluster == 1)
+    cellcluster = "Natural killer T (NKT) cell"
+  if(cellcluster == 2)
+    cellcluster = "Monocyte"
+  if(cellcluster == 3)
+    cellcluster = "B cell"
+  if(cellcluster == 4)
+    cellcluster = "Natural killer T (NKT) cell"
+  if(cellcluster == 5)
+    cellcluster = "CD4+ cytotoxic T cell"
+  if(cellcluster == 6)
+    cellcluster = "CD1C-CD141- dendritic cell"
+  if(cellcluster == 7)
+    cellcluster = "Secretory cell"
+  if(cellcluster == 8)
+    cellcluster = "Natural killer T (NKT) cell"
+  return(cellcluster)
+} 
+get_cell_type("AAACATTGAGCTAC-1")
+
+```
