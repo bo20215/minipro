@@ -1,0 +1,80 @@
+---
+title: "marker"
+author: "Guan Wang"
+date: "2021/3/7"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r cars}
+human<-read.table("human_cell_markers.txt",header = TRUE,sep = '\t')
+head(human)
+```
+
+delect mouse
+```{r pressure, echo=FALSE}
+human1 <- select(human,speciesType,cellType,cellName,cellMarker,geneSymbol,geneID)   
+human1 <- human1%>%filter(speciesType=='Human')
+```
+delect Na
+```{r pressure, echo=FALSE}
+human2 <- human1%>%filter(is.na(cellMarker)==FALSE)
+```
+
+use to find cell acorrding to cell marker
+```{r pressure, echo=FALSE}
+cluster0 <- human2%>%filter(grepl('SH3D19',cellMarker)==TRUE)
+```
+```{r pressure, echo=FALSE}
+cluster1 <- cluster0%>%filter(grepl('LRRC75A',cellMarker)==TRUE)
+```
+```{r pressure, echo=FALSE}
+cluster2 <- cluster1%>%filter(grepl('NIBAN3',cellMarker)==TRUE)
+```
+```{r pressure, echo=FALSE}
+cluster3 <- cluster2%>%filter(grepl('IGHG1',cellMarker)==TRUE)
+```
+```{r pressure, echo=FALSE}
+cluster4 <- cluster3%>%filter(grepl('IGLC2',cellMarker)==TRUE)
+```
+```{r pressure, echo=FALSE}
+cluster5 <- cluster4%>%filter(grepl('MZB1',cellMarker)==TRUE)
+```
+```{r pressure, echo=FALSE}
+cluster6 <- cluster5%>%filter(grepl('IGLL5',cellMarker)==TRUE)
+```
+```{r pressure, echo=FALSE}
+cluster7 <- cluster6%>%filter(grepl('ITM2C',cellMarker)==TRUE)
+```
+```{r pressure, echo=FALSE}
+cluster8 <- cluster7%>%filter(grepl('S100A6',cellMarker)==TRUE)
+```
+```{r pressure, echo=FALSE}
+cluster9 <- cluster8%>%filter(grepl('CTSW',cellMarker)==TRUE)
+```
+
+
+delete marker is there is a na in it.
+```{r pressure, echo=FALSE}
+human3 <- human2%>%filter(grepl('NA,',cellMarker)==FALSE & grepl(',NA',cellMarker)==FALSE)
+```
+
+find a cell only have one marker
+```{r pressure, echo=FALSE}
+human4 <- human3%>%filter(grepl(',',geneSymbol)==FALSE)
+```
+
+find unique
+```{r pressure, echo=FALSE}
+human5 <- human4%>%distinct(cellName,cellMarker,geneSymbol,geneID, .keep_all = T)
+```
+
+group 
+```{r pressure, echo=FALSE}
+human6 <- human5%>%group_by(cellName)%>%summarise( cellMark = cellMarker,genes=geneSymbol,geneD = geneID)
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
